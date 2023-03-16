@@ -1,1 +1,3 @@
 # android-money-tracker
+An app that show you how much money you made by month and by year. with a widget that you can put in you android home page
+In the MVP you will add the money you made manually but eventually the app could connect to you other apps to automatically track how much you made from se-commerce sales ...
