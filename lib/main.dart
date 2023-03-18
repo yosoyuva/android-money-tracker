@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+
+Future<void> _clearSharedPreferences() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.clear();
+}
+
+Future<void> main() async {
+  // Clear SharedPreferences before running the app
+  //await _clearSharedPreferences();
+
   runApp(MyApp());
 }
 
@@ -22,17 +32,24 @@ class MoneyGoalTracker extends StatefulWidget {
 }
 
 class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
-  // Implementation will go here
   double goal = 1000.0;
   double currentAmount = 0.0;
   TextEditingController amountController = TextEditingController();
-  TextEditingController goalController = TextEditingController();//
+  TextEditingController goalController = TextEditingController();
 
-  bool _isDialogShown = false; // Add this variable to track if the dialog has been shown
+  bool _isDialogShown = false;
 
   @override
   void initState() {
     super.initState();
+    //_loadAndHandleData();
+  }
+
+  Future<void> _loadAndHandleData() async {
+    await _loadData();
+    if (goal == 800.0 && currentAmount == 0.0) {
+      await _showGoalDialog();
+    }
   }
 
   @override
@@ -40,15 +57,35 @@ class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
     super.didChangeDependencies();
     if (!_isDialogShown) {
       _isDialogShown = true;
-      WidgetsBinding.instance!.addPostFrameCallback((_) {
-        _showGoalDialog();
+      WidgetsBinding.instance!.addPostFrameCallback((_) async {
+        await _loadData();
+        if (goal == 800.0 && currentAmount == 0.0) {
+          _showGoalDialog();
+        }
       });
-
     }
   }
 
-  void _showGoalDialog() {
-    showDialog(
+  Future<void> _loadData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      goal = prefs.getDouble('goal') ?? 800.0;
+      currentAmount = prefs.getDouble('currentAmount') ?? 0.0;
+    });
+    if (goal == 0.0) {
+    _showGoalDialog();
+  }
+  }
+
+  Future<void> _saveData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setDouble('goal', goal);
+    prefs.setDouble('currentAmount', currentAmount);
+    prefs.setString('goalDate', DateTime.now().toString());
+  }
+
+  Future<void> _showGoalDialog() async {
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
@@ -70,7 +107,9 @@ class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
                   setState(() {
                     goal = newGoal;
                   });
-                 Navigator.of(context).pop();
+                  _saveData();
+                  FocusScope.of(context).unfocus();
+                  Navigator.of(context).pop();
                 }
               },
               child: Text('Set goal'),
@@ -79,8 +118,39 @@ class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
         );
       },
     );
+    _isDialogShown = true;
   }
 
+  void _resetAmounts() {
+    setState(() {
+      goal = 0.0;
+      currentAmount = 0.0;
+    });
+    _saveData();
+    _showGoalDialog();
+  }
+
+  Future<String> _getTimeLeft() async {
+    Duration goalDuration = Duration(days: 30);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    if (prefs.containsKey('goalDate')) {
+      DateTime goalDate = DateTime.parse(prefs.getString('goalDate')!);
+      DateTime targetDate = goalDate.add(goalDuration);
+      Duration timeLeft = targetDate.difference(DateTime.now());
+      return '${timeLeft.inDays} days';
+    }
+
+    return 'N/A';
+  }
+
+  Future<String> _getGoalDate() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey('goalDate')) {
+     return prefs.getString('goalDate')!;
+   }
+    return 'N/A';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +166,29 @@ class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
         ),
         SizedBox(height: 20),
         Text('Current progress: \$${currentAmount.toStringAsFixed(2)} / \$${goal.toStringAsFixed(2)}'),
+        
+        FutureBuilder<String>(
+          future: _getGoalDate(),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return Text('Goal Date: ${snapshot.data}');
+            } else {
+              return Text('Goal Date: N/A');
+            }
+          },
+        ),
+        FutureBuilder<String>(
+          future: _getTimeLeft(),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return Text('Time left: ${snapshot.data}');
+            } else {
+              return Text('Time left: N/A');
+            }
+          },
+        ),
+
+
         SizedBox(height: 20),
         TextField(
           controller: amountController,
@@ -115,15 +208,24 @@ class _MoneyGoalTrackerState extends State<MoneyGoalTracker> {
                 currentAmount = goal; /// add something like a reward if I exceed goal
               }
             });
+            _saveData();
             amountController.clear(); // Clear the text in the amountController
           },
           child: Text('Add amount'),
+        ),
+        SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: _resetAmounts,
+          child: Text('Reset Amounts'),
         ),
       ],
     );
   }
 
 }
+
+
+
 
 class VerticalProgressBar extends StatelessWidget {
   final double value;
